@@ -300,10 +300,18 @@ function Save-DiscoveryRunReport {
     $lines = New-Object System.Collections.Generic.List[string]
     $lines.Add("# $ReportTitle")
     $lines.Add("RunId: $($Context.RunId)")
-    $lines.Add("RunRoot: $($Context.RunRoot)")
     $lines.Add("Generated: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')")
     $lines.Add("")
-    $lines.Add("## Script Index")
+    $lines.Add("## Management Overview")
+    $lines.Add("This report is designed for management review of the current Active Directory environment hosted on the assessed domain controller.")
+    $lines.Add("")
+    $lines.Add("- It summarizes what is running on the server today.")
+    $lines.Add("- It highlights operational ownership areas that must be reviewed before any decommissioning work proceeds.")
+    $lines.Add("- Detailed machine-readable evidence remains available separately in the run folder for engineering follow-up.")
+    $lines.Add("")
+    $lines.Add("## Section Guide")
+    $lines.Add("| Section | What It Covers | Why It Matters |")
+    $lines.Add("| --- | --- | --- |")
 
     foreach ($result in $ScriptResults) {
         $textPath = if ($null -ne $result.TextPath) { [string]$result.TextPath } else { '' }
@@ -321,31 +329,33 @@ function Save-DiscoveryRunReport {
             CsvPaths = @($csvPaths) -join '; '
         }
 
-        $lines.Add("- $($result.ScriptName)")
-        $lines.Add("  - Report: $textPath")
-        $lines.Add("  - JSON: $jsonPath")
-        if ($csvPaths.Count -gt 0) {
-            $lines.Add("  - CSVs:")
-            foreach ($csvPath in $csvPaths) {
-                $lines.Add("    - $csvPath")
-            }
-        }
+        $sectionInfo = Get-DiscoveryManagementSectionInfo -ScriptName $result.ScriptName
+        $lines.Add("| $($sectionInfo.Title) | $($sectionInfo.Scope) | $($sectionInfo.WhyItMatters) |")
     }
 
     $lines.Add("")
-    $lines.Add("## Script Reports")
+    $lines.Add("## Review Sections")
     foreach ($result in $ScriptResults) {
         $textPath = if ($null -ne $result.TextPath) { [string]$result.TextPath } else { '' }
+        $sectionInfo = Get-DiscoveryManagementSectionInfo -ScriptName $result.ScriptName
         $lines.Add("")
-        $lines.Add("## $($result.ScriptName)")
+        $lines.Add("## $($sectionInfo.Title)")
+        $lines.Add("")
+        $lines.Add("> **What this section is**")
+        $lines.Add(">")
+        $lines.Add("> $($sectionInfo.Scope)")
+        $lines.Add(">")
+        $lines.Add("> **Why management should care**")
+        $lines.Add(">")
+        $lines.Add("> $($sectionInfo.WhyItMatters)")
         $lines.Add("")
         if ($textPath -and (Test-Path -LiteralPath $textPath)) {
-            foreach ($reportLine in @(Get-Content -Path $textPath)) {
+            foreach ($reportLine in @(Get-DiscoveryManagementReportLinesFromArtifact -TextPath $textPath)) {
                 $lines.Add([string]$reportLine)
             }
         }
         else {
-            $lines.Add("_Missing report file: $textPath_")
+            $lines.Add("_Detailed section output was not available for this section._")
         }
     }
 
@@ -364,6 +374,124 @@ function Save-DiscoveryRunReport {
         IndexPath = $indexPath
         ScriptCount = $ScriptResults.Count
     }
+}
+
+function Get-DiscoveryManagementSectionInfo {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ScriptName
+    )
+
+    $map = @{
+        'Get-DCOverview' = [pscustomobject]@{
+            Title = 'Current Domain Controller Overview'
+            Scope = 'A baseline summary of the server identity, operating system, network, domain membership, and forest role in the environment.'
+            WhyItMatters = 'This tells management what server is being assessed and confirms whether it is a central identity infrastructure component.'
+        }
+        'Get-FSMOState' = [pscustomobject]@{
+            Title = 'FSMO Role Ownership'
+            Scope = 'The current ownership of the critical Active Directory operations master roles for the domain and forest.'
+            WhyItMatters = 'If these roles remain on the server, it cannot be retired safely until those responsibilities are transferred elsewhere.'
+        }
+        'Get-ADReplicationHealth' = [pscustomobject]@{
+            Title = 'Directory Health And Replication'
+            Scope = 'Health indicators for Active Directory replication, domain controller availability, and core AD-related services.'
+            WhyItMatters = 'This shows whether the directory is stable enough to support change without introducing authentication or policy failures.'
+        }
+        'Get-DNSState' = [pscustomobject]@{
+            Title = 'DNS Service Footprint'
+            Scope = 'The DNS zones, records, and forwarding behavior currently hosted on the server.'
+            WhyItMatters = 'DNS is a production dependency for authentication and application connectivity, so management needs visibility into how much name service would move with this server.'
+        }
+        'Get-LocalServerFootprint' = [pscustomobject]@{
+            Title = 'Local Server Dependencies'
+            Scope = 'Installed roles, services, file shares, and scheduled tasks that indicate the server is doing more than domain controller duties.'
+            WhyItMatters = 'This highlights operational dependencies that may need migration, replacement, or business sign-off before server retirement.'
+        }
+        'Get-ADDependencyInventory' = [pscustomobject]@{
+            Title = 'Active Directory Dependencies'
+            Scope = 'Indicators of application or service reliance on AD objects such as SPNs, delegation, GPOs, service accounts, and trusts.'
+            WhyItMatters = 'This helps identify workloads that may still depend on the directory and could be affected by decommissioning decisions.'
+        }
+        'Get-SyncFootprint' = [pscustomobject]@{
+            Title = 'Identity Sync Footprint'
+            Scope = 'Detection of Microsoft Entra Connect Sync or Cloud Sync components that would tie this server to hybrid identity operations.'
+            WhyItMatters = 'If synchronization tooling is present, identity flows to Microsoft 365 or Entra ID may be impacted and must be addressed before change approval.'
+        }
+    }
+
+    if ($map.ContainsKey($ScriptName)) {
+        return $map[$ScriptName]
+    }
+
+    return [pscustomobject]@{
+        Title = $ScriptName
+        Scope = 'Discovery output for this section.'
+        WhyItMatters = 'This section provides additional environmental context for decommission planning.'
+    }
+}
+
+function Get-DiscoveryManagementReportLinesFromArtifact {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$TextPath
+    )
+
+    $lines = @(Get-Content -Path $TextPath)
+    $output = New-Object System.Collections.Generic.List[string]
+    $skipAttachments = $false
+    $skipJson = $false
+
+    foreach ($line in $lines) {
+        if ($line -match '^# ') {
+            continue
+        }
+
+        if ($line -match '^RunId:' -or $line -match '^RunRoot:' -or $line -match '^Generated:') {
+            continue
+        }
+
+        if ($line -eq '## Attachments') {
+            $skipAttachments = $true
+            continue
+        }
+
+        if ($line -eq '## JSON') {
+            $skipJson = $true
+            continue
+        }
+
+        if ($skipAttachments) {
+            if ($line -match '^## ') {
+                $skipAttachments = $false
+            }
+            else {
+                continue
+            }
+        }
+
+        if ($skipJson) {
+            if ($line -match '^## ') {
+                $skipJson = $false
+            }
+            else {
+                continue
+            }
+        }
+
+        if ($line -match '^- CSV: ') {
+            continue
+        }
+
+        if ($line -match '^- Rows: ') {
+            $output.Add($line)
+            continue
+        }
+
+        $output.Add($line)
+    }
+
+    return @($output)
 }
 
 function Convert-DiscoveryMarkdownReportToHtml {
@@ -496,11 +624,13 @@ tr:nth-child(even) td {
   background: #fbfcfc;
 }
 blockquote {
-  margin: 14px 0;
-  padding: 10px 14px;
-  border-left: 4px solid var(--accent);
-  background: #f6fafb;
-  color: var(--muted);
+  margin: 16px 0 22px 0;
+  padding: 14px 16px;
+  border-left: 6px solid var(--accent);
+  border-radius: 10px;
+  background: linear-gradient(180deg, #eef7f8 0%, #f8fbfc 100%);
+  color: var(--ink);
+  box-shadow: inset 0 0 0 1px #d7e7ea;
 }
 .footer {
   color: var(--muted);
