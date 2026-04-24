@@ -8,6 +8,7 @@ This folder contains the tenant-side discovery, verification, and change scripts
 - inventories synced users and groups
 - disables directory synchronization in the tenant
 - waits for the tenant to report sync disabled
+- validates tenant Graph permissions with a dry-run precheck
 
 The scripts use Microsoft Graph PowerShell login and can prompt interactively or by device code.
 
@@ -16,6 +17,8 @@ The scripts use Microsoft Graph PowerShell login and can prompt interactively or
 - `scripts/entra-connect/lib/EntraConnect.Common.ps1` - shared Graph/auth/output helpers
 - `scripts/entra-connect/discovery/` - read-only tenant discovery scripts
 - `scripts/entra-connect/change/` - tenant change and verification scripts
+- `scripts/entra-connect/precheck/` - Graph permissions precheck scripts
+- `scripts/entra-connect/local/` - local sync host uninstall workflow
 - `scripts/entra-connect/EntraConnect-Decommission-Checklist.md` - manual checklist for the full workflow
 - `scripts/entra-connect/Export-EntraConnectPack.ps1` - read-only wrapper that runs both discovery scripts
 
@@ -64,12 +67,23 @@ Runs the read-only tenant discovery scripts with one shared `RunId`.
 
 Use this when you want one evidence pack before the change window.
 
+### `scripts/entra-connect/precheck/Test-EntraConnectGraphPrereqs.ps1`
+Validates the Graph login and the required scopes before change night.
+
+Use this to catch missing consent or account issues before you enter the maintenance window.
+
 ## Suggested run order
 
-1. `Get-EntraSyncTenantState.ps1`
-2. `Get-EntraSyncObjectInventory.ps1`
-3. `Disable-EntraDirectorySync.ps1`
-4. `Wait-EntraDirectorySyncDisabled.ps1`
+1. `scripts/entra-connect/precheck/Test-EntraConnectGraphPrereqs.ps1`
+2. `Get-EntraSyncTenantState.ps1`
+3. `Get-EntraSyncObjectInventory.ps1`
+4. `scripts/entra-connect/local/Get-EntraConnectLocalState.ps1`
+5. `scripts/entra-connect/local/Test-EntraConnectLocalPrereqs.ps1`
+6. `scripts/entra-connect/local/Stop-EntraConnectSyncServices.ps1`
+7. `scripts/entra-connect/local/Uninstall-EntraConnect.ps1`
+8. `Disable-EntraDirectorySync.ps1`
+9. `Wait-EntraDirectorySyncDisabled.ps1`
+10. `scripts/entra-connect/local/Verify-EntraConnectRemoval.ps1`
 
 ## Suggested scopes
 
@@ -93,5 +107,5 @@ The disable script requests write scopes for:
 ## Notes
 
 - Microsoft documents that disabling directory synchronization can take up to 72 hours to finish.
-- These scripts are tenant-side only. The local sync server uninstall is still a separate step on the DC or sync host.
+- The full workflow now has separate folders for tenant discovery/change, local sync host uninstall, and the Graph precheck.
 - The DC-side `scripts/discovery/` folder already contains `Get-SyncFootprint.ps1` to help confirm the local sync footprint before you remove it.
