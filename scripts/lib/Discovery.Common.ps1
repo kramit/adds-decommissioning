@@ -292,6 +292,8 @@ function Save-DiscoveryRunReport {
     )
 
     $reportPath = Join-Path $Context.RunRoot 'Discovery-Report.md'
+    $htmlPath = Join-Path $Context.RunRoot 'Discovery-Report.html'
+    $pdfPath = Join-Path $Context.RunRoot 'Discovery-Report.pdf'
     $indexPath = Join-Path $Context.RunRoot 'Discovery-Index.csv'
 
     $indexRows = @()
@@ -350,10 +352,249 @@ function Save-DiscoveryRunReport {
     $lines | Set-Content -Path $reportPath -Encoding UTF8
     $indexRows | Export-Csv -Path $indexPath -NoTypeInformation -Encoding UTF8
 
+    $htmlResult = Convert-DiscoveryMarkdownReportToHtml -MarkdownPath $reportPath -HtmlPath $htmlPath -Title $ReportTitle -RunId $Context.RunId -RunRoot $Context.RunRoot
+    $pdfResult = Convert-DiscoveryHtmlReportToPdf -HtmlPath $htmlPath -PdfPath $pdfPath
+
     [pscustomobject]@{
         ReportPath = $reportPath
+        HtmlPath = $htmlResult.HtmlPath
+        PdfPath = $pdfResult.PdfPath
+        PdfGenerated = $pdfResult.Generated
+        PdfWarning = $pdfResult.Warning
         IndexPath = $indexPath
         ScriptCount = $ScriptResults.Count
+    }
+}
+
+function Convert-DiscoveryMarkdownReportToHtml {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$MarkdownPath,
+
+        [Parameter(Mandatory = $true)]
+        [string]$HtmlPath,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Title,
+
+        [string]$RunId,
+
+        [string]$RunRoot
+    )
+
+    $markdown = ConvertFrom-Markdown -Path $MarkdownPath
+    $reportDate = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+    $style = @"
+<style>
+:root {
+  --bg: #f4f1ea;
+  --surface: #fffdf9;
+  --ink: #1c2430;
+  --muted: #5f6b7a;
+  --accent: #0f4c5c;
+  --accent-soft: #d8e7eb;
+  --line: #d6ddd9;
+  --table-head: #eef4f6;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: "Segoe UI", Tahoma, sans-serif;
+  line-height: 1.45;
+}
+.page {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 32px;
+}
+.hero {
+  background: linear-gradient(135deg, #143642 0%, #1d5965 100%);
+  color: #fff;
+  padding: 36px 40px;
+  border-radius: 18px;
+  box-shadow: 0 10px 30px rgba(20, 54, 66, 0.18);
+  margin-bottom: 24px;
+}
+.hero h1 {
+  margin: 0 0 8px 0;
+  font-size: 30px;
+  letter-spacing: 0.02em;
+}
+.hero-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 20px;
+}
+.hero-card {
+  background: rgba(255,255,255,0.12);
+  border: 1px solid rgba(255,255,255,0.18);
+  border-radius: 12px;
+  padding: 12px 14px;
+}
+.hero-card .label {
+  display: block;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  opacity: 0.8;
+  margin-bottom: 4px;
+}
+.content {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 28px 32px;
+  box-shadow: 0 8px 24px rgba(28, 36, 48, 0.06);
+}
+h1, h2, h3, h4 {
+  color: var(--accent);
+  page-break-after: avoid;
+}
+h1 { font-size: 28px; margin-top: 0; }
+h2 {
+  font-size: 22px;
+  margin-top: 28px;
+  padding-bottom: 8px;
+  border-bottom: 2px solid var(--accent-soft);
+}
+h3 {
+  font-size: 18px;
+  margin-top: 22px;
+  background: var(--table-head);
+  border-left: 5px solid var(--accent);
+  padding: 8px 12px;
+  border-radius: 8px;
+}
+p, li { color: var(--ink); }
+ul { padding-left: 22px; }
+code {
+  font-family: Consolas, "Courier New", monospace;
+  background: #f2f5f7;
+  border-radius: 4px;
+  padding: 0.1em 0.35em;
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 14px 0 22px 0;
+  font-size: 12px;
+}
+thead tr, tr:first-child {
+  background: var(--table-head);
+}
+th, td {
+  border: 1px solid var(--line);
+  padding: 8px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+tr:nth-child(even) td {
+  background: #fbfcfc;
+}
+blockquote {
+  margin: 14px 0;
+  padding: 10px 14px;
+  border-left: 4px solid var(--accent);
+  background: #f6fafb;
+  color: var(--muted);
+}
+.footer {
+  color: var(--muted);
+  font-size: 11px;
+  margin-top: 18px;
+  text-align: right;
+}
+@media print {
+  body { background: #fff; }
+  .page { max-width: none; padding: 0; }
+  .hero, .content {
+    box-shadow: none;
+    border: 0;
+  }
+  .content { padding: 0; }
+  h2, h3, table { page-break-inside: avoid; }
+}
+</style>
+"@
+
+    $html = @"
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>$Title</title>
+  $style
+</head>
+<body>
+  <div class="page">
+    <section class="hero">
+      <h1>$Title</h1>
+      <p>Management-ready summary export for the latest AD DS discovery pack.</p>
+      <div class="hero-grid">
+        <div class="hero-card"><span class="label">Run ID</span><span>$RunId</span></div>
+        <div class="hero-card"><span class="label">Generated</span><span>$reportDate</span></div>
+        <div class="hero-card"><span class="label">Run Root</span><span>$RunRoot</span></div>
+      </div>
+    </section>
+    <main class="content">
+      $($markdown.Html)
+      <div class="footer">Generated by adds-decommissioning discovery tooling</div>
+    </main>
+  </div>
+</body>
+</html>
+"@
+
+    $html | Set-Content -Path $HtmlPath -Encoding UTF8
+
+    [pscustomobject]@{
+        HtmlPath = $HtmlPath
+    }
+}
+
+function Convert-DiscoveryHtmlReportToPdf {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$HtmlPath,
+
+        [Parameter(Mandatory = $true)]
+        [string]$PdfPath
+    )
+
+    $edgePath = 'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe'
+    if (-not (Test-Path -LiteralPath $edgePath)) {
+        return [pscustomobject]@{
+            PdfPath = $null
+            Generated = $false
+            Warning = "Microsoft Edge was not found at $edgePath"
+        }
+    }
+
+    $htmlUri = ([System.Uri]$HtmlPath).AbsoluteUri
+    $result = Invoke-ExternalCommand -FilePath $edgePath -Arguments @(
+        '--headless',
+        '--disable-gpu',
+        "--print-to-pdf=$PdfPath",
+        $htmlUri
+    )
+
+    if ((Test-Path -LiteralPath $PdfPath) -and $result.ExitCode -eq 0) {
+        return [pscustomobject]@{
+            PdfPath = $PdfPath
+            Generated = $true
+            Warning = $null
+        }
+    }
+
+    return [pscustomobject]@{
+        PdfPath = if (Test-Path -LiteralPath $PdfPath) { $PdfPath } else { $null }
+        Generated = [bool](Test-Path -LiteralPath $PdfPath)
+        Warning = "Edge PDF generation did not complete cleanly. ExitCode=$($result.ExitCode)"
     }
 }
 

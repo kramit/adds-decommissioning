@@ -20,7 +20,7 @@ Run the full discovery pack from the repo root:
 pwsh -File .\run-discovery.ps1
 ```
 
-That produces one run folder under `scripts/output/` with per-script TXT/CSV/JSON artifacts plus a consolidated `Discovery-Report.md`.
+That produces one run folder under `scripts/output/` with per-script TXT/CSV/JSON artifacts plus consolidated `Discovery-Report.md`, `Discovery-Report.html`, and a management-ready `Discovery-Report.pdf`.
 
 Run the EntraConnect tenant discovery pack from the repo root:
 

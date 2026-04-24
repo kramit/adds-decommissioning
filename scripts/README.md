@@ -18,7 +18,7 @@ Each script writes a detailed artifact set into its own output folder:
 - optional attachment `.txt` files - raw command output such as `dcdiag` or `w32tm`
 
 When run with the same `-RunId`, scripts write into a shared run folder so the evidence stays grouped together.
-The pack runner also generates a consolidated `Discovery-Report.md` and `Discovery-Index.csv` at the run root.
+The pack runner also generates consolidated `Discovery-Report.md`, `Discovery-Report.html`, `Discovery-Report.pdf`, and `Discovery-Index.csv` files at the run root.
 
 ## Script list
 
@@ -110,7 +110,7 @@ Use this to determine whether the DC is hosting the sync component and which syn
 Runs all discovery scripts with one shared `-RunId` and stores the results together.
 
 Use this when you want a single inventory pass and a grouped evidence pack.
-It also generates the combined `Discovery-Report.md` and `Discovery-Index.csv` files.
+It also generates the combined `Discovery-Report.md`, styled `Discovery-Report.html`, management-ready `Discovery-Report.pdf`, and `Discovery-Index.csv` files.
 
 ## Suggested run order
 
