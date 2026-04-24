@@ -6,6 +6,7 @@ The intent is to keep the work modular:
 
 - the markdown files hold the project notes and checklist
 - `scripts/` holds the PowerShell discovery tooling for the DC side
+- `scripts/execution/` holds the discovery-backed DC decommission plan and execution scripts
 - `scripts/entra-connect/` holds the tenant-side EntraConnect disconnect tooling
 - `scripts/entra-connect/local/` holds the local Entra Connect uninstall workflow
 - `scripts/entra-connect/precheck/` holds the Graph permissions dry-run precheck
@@ -33,6 +34,18 @@ Run the full EntraConnect change orchestrator from the repo root:
 pwsh -File .\run-entra-connect-full.ps1
 ```
 
+Build the DC decommission plan from the discovery artifacts:
+
+```powershell
+pwsh -File .\run-dc-decommission.ps1
+```
+
+When the plan has been reviewed and approved, run the DC decommission execution path:
+
+```powershell
+pwsh -File .\run-dc-decommission.ps1 -Execute
+```
+
 You can optionally provide a shared run ID so multiple script runs land in the same evidence folder:
 
 ```powershell
@@ -49,6 +62,8 @@ pwsh -File .\run-discovery.ps1 -RunId 20260424-120000
 - `scripts/discovery/Get-ADDependencyInventory.ps1` collects likely AD dependency indicators.
 - `scripts/discovery/Get-SyncFootprint.ps1` detects Entra Connect or Cloud Sync footprints.
 - `scripts/discovery/Export-DiscoveryPack.ps1` runs the full discovery set with one shared `RunId`.
+- `scripts/execution/Build-DCDecommissionPlan.ps1` collates discovery output into a human-reviewable decommission plan.
+- `scripts/execution/Invoke-DCDecommission.ps1` performs the controlled DC demotion path with diagnostics capture.
 - `scripts/entra-connect/discovery/Get-EntraSyncTenantState.ps1` captures tenant sync state.
 - `scripts/entra-connect/discovery/Get-EntraSyncObjectInventory.ps1` inventories synced users and groups.
 - `scripts/entra-connect/precheck/Test-EntraConnectGraphPrereqs.ps1` validates Graph login and permissions.
@@ -60,6 +75,7 @@ pwsh -File .\run-discovery.ps1 -RunId 20260424-120000
 - `scripts/entra-connect/change/Disable-EntraDirectorySync.ps1` disables directory synchronization in the tenant.
 - `scripts/entra-connect/change/Wait-EntraDirectorySyncDisabled.ps1` waits for the tenant to report sync disabled.
 - `scripts/entra-connect/Export-EntraConnectPack.ps1` runs the read-only tenant discovery pack.
+- `run-dc-decommission.ps1` drives the discovery-backed DC decommission workflow.
 - `run-entra-connect-full.ps1` orchestrates the precheck, discovery, local uninstall, and tenant sync disable flow.
 
 For script-level details, see [`scripts/README.md`](scripts/README.md).

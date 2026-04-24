@@ -4,9 +4,10 @@
 
 This repository supports an AD DS decommission project for a hybrid environment moving to cloud-only identity.
 
-The work is split into three tracks:
+The work is split into four tracks:
 
 - DC-side discovery and evidence collection
+- DC decommission planning and execution driven by discovery artifacts
 - EntraConnect tenant discovery and tenant sync disablement
 - Local EntraConnect sync-host uninstall workflow
 
@@ -16,6 +17,7 @@ The repo is a nested git repository inside a larger Obsidian vault. Future work 
 
 - `ADDS Decommissioning.md` and `ADDS Decom checklist.md` contain the original project notes and checklist.
 - `scripts/discovery/` contains DC-side discovery scripts.
+- `scripts/execution/` contains the discovery-driven DC decommission plan and execution scripts.
 - `scripts/entra-connect/` contains tenant-side EntraConnect scripts.
 - `scripts/entra-connect/precheck/` contains the Graph permissions dry-run check.
 - `scripts/entra-connect/local/` contains the local sync-host uninstall workflow.
@@ -45,6 +47,22 @@ Purpose:
 - detect Entra Connect / Cloud Sync footprint on the server
 - emit detailed per-script TXT, CSV, and JSON artifacts
 - generate a consolidated `Discovery-Report.md` and `Discovery-Index.csv`
+
+### DC decommission planning and execution
+
+- `run-dc-decommission.ps1`
+- `scripts/execution/README.md`
+- `scripts/execution/lib/Decommission.Common.ps1`
+- `scripts/execution/Build-DCDecommissionPlan.ps1`
+- `scripts/execution/Invoke-DCDecommission.ps1`
+
+Purpose:
+
+- consume the discovery pack as the source of truth
+- build a human-reviewable decommission plan
+- highlight blockers such as replication issues, FSMO ownership, and sync footprints
+- capture transcript, event logs, and command diagnostics during execution
+- perform the controlled AD DS demotion path only when explicitly requested
 
 ### Tenant-side EntraConnect discovery and disablement
 
@@ -103,12 +121,16 @@ Recommended order for a full change cycle:
 8. Run `scripts/entra-connect/change/Disable-EntraDirectorySync.ps1`
 9. Run `scripts/entra-connect/change/Wait-EntraDirectorySyncDisabled.ps1`
 10. Run `scripts/entra-connect/local/Verify-EntraConnectRemoval.ps1`
+11. Run `run-dc-decommission.ps1` without `-Execute`
+12. Review the DC decommission plan output
+13. Run `run-dc-decommission.ps1 -Execute` when the plan is approved
 
 ## Entry Points
 
 - `pwsh -File .\run-discovery.ps1`
 - `pwsh -File .\run-entra-connect.ps1`
 - `pwsh -File .\run-entra-connect-full.ps1`
+- `pwsh -File .\run-dc-decommission.ps1`
 
 ## Output Convention
 
@@ -144,6 +166,7 @@ Recommended order for a full change cycle:
 
 - [`README.md`](/Users/mike/Library/CloudStorage/OneDrive-Personal/Documents/Obsidian/MikesVault/General%20Notes/ADDS%20decomissioning/README.md)
 - [`scripts/README.md`](/Users/mike/Library/CloudStorage/OneDrive-Personal/Documents/Obsidian/MikesVault/General%20Notes/ADDS%20decomissioning/scripts/README.md)
+- [`scripts/execution/README.md`](/Users/mike/Library/CloudStorage/OneDrive-Personal/Documents/Obsidian/MikesVault/General%20Notes/ADDS%20decomissioning/scripts/execution/README.md)
 - [`scripts/entra-connect/README.md`](/Users/mike/Library/CloudStorage/OneDrive-Personal/Documents/Obsidian/MikesVault/General%20Notes/ADDS%20decomissioning/scripts/entra-connect/README.md)
 - [`scripts/entra-connect/local/README.md`](/Users/mike/Library/CloudStorage/OneDrive-Personal/Documents/Obsidian/MikesVault/General%20Notes/ADDS%20decomissioning/scripts/entra-connect/local/README.md)
 - [`scripts/entra-connect/precheck/README.md`](/Users/mike/Library/CloudStorage/OneDrive-Personal/Documents/Obsidian/MikesVault/General%20Notes/ADDS%20decomissioning/scripts/entra-connect/precheck/README.md)
