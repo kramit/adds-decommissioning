@@ -19,10 +19,11 @@ $forwarders = @()
 $conditionalForwarders = @()
 $scavenging = $null
 $hostRecordHits = @()
+$zoneRecords = @()
 
 if ($dnsModuleLoaded) {
     try {
-        $zones = @(Get-DnsServerZone | Select-Object ZoneName, ZoneType, IsDsIntegrated, IsAutoCreated, IsReverseLookupZone, ReplicationScope)
+        $zones = @(Get-DnsServerZone | Select-Object ZoneName, ZoneType, IsDsIntegrated, IsAutoCreated, IsReverseLookupZone, ReplicationScope, IsPaused, IsShutdown)
     }
     catch {
         $warnings += "Unable to enumerate DNS zones: $($_.Exception.Message)"
@@ -52,6 +53,18 @@ if ($dnsModuleLoaded) {
     foreach ($zone in @($zones)) {
         try {
             $records = @(Get-DnsServerResourceRecord -ZoneName $zone.ZoneName -ErrorAction Stop)
+            foreach ($record in $records) {
+                $zoneRecords += [pscustomobject]@{
+                    ZoneName = $zone.ZoneName
+                    HostName = $record.HostName
+                    RecordType = $record.RecordType
+                    TimeToLive = $record.TimeToLive
+                    Timestamp = $record.Timestamp
+                    RecordData = $record.RecordData
+                    RecordClass = $record.RecordClass
+                    DistinguishedName = $record.DistinguishedName
+                }
+            }
             $hostRecordHits += [pscustomobject]@{
                 ZoneName = $zone.ZoneName
                 RecordCount = $records.Count
@@ -74,6 +87,7 @@ $data = [pscustomobject]@{
     ConditionalForwarders = @($conditionalForwarders)
     Scavenging = $scavenging
     ZoneRecordSummary = @($hostRecordHits)
+    ZoneRecords = @($zoneRecords)
     Notes = @(
         'This script inventories the DNS role state hosted on the DC.',
         'It is intended to reveal zones, forwarders, and likely DNS cleanup work.'
@@ -85,13 +99,21 @@ $summary = @(
     "Forwarders: $(@($forwarders).Count)",
     "Conditional forwarders: $(@($conditionalForwarders).Count)",
     "Zones with record summaries: $(@($hostRecordHits).Count)",
+    "DNS records captured: $(@($zoneRecords).Count)",
     "Scavenging captured: $([bool]$scavenging)"
 )
 
-$artifact = Save-DiscoveryArtifact -Context $context -Data $data -SummaryLines $summary -Warnings $warnings
+$artifact = Save-DiscoveryArtifact -Context $context -Data $data -SummaryLines $summary -Warnings $warnings -Tables @{
+    'Zones' = @($zones)
+    'Forwarders' = @($forwarders)
+    'ConditionalForwarders' = @($conditionalForwarders)
+    'ZoneRecordSummary' = @($hostRecordHits)
+    'ZoneRecords' = @($zoneRecords)
+}
 [pscustomobject]@{
     ScriptName = $context.ScriptName
     TextPath = $artifact.TextPath
     JsonPath = $artifact.JsonPath
+    CsvFiles = $artifact.CsvFiles
     RunRoot = $context.RunRoot
 }

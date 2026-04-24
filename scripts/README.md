@@ -10,12 +10,15 @@ These scripts are the discovery phase for the AD DS decommission project. They a
 
 ## Output model
 
-Each script writes two files into its own output folder:
+Each script writes a detailed artifact set into its own output folder:
 
 - `*.json` - machine-readable inventory
-- `*.txt` - short summary and the JSON file path
+- `*.txt` - human-readable report with summary, table previews, and attachment references
+- `*.csv` - one or more detailed tables for human review and downstream processing
+- optional attachment `.txt` files - raw command output such as `dcdiag` or `w32tm`
 
 When run with the same `-RunId`, scripts write into a shared run folder so the evidence stays grouped together.
+The pack runner also generates a consolidated `Discovery-Report.md` and `Discovery-Index.csv` at the run root.
 
 ## Script list
 
@@ -25,7 +28,7 @@ Captures the basic identity of the current DC:
 - computer name
 - domain membership
 - OS and uptime
-- network addresses
+- network adapters and IP configuration
 - AD domain controller details
 - forest and domain metadata
 - time source information
@@ -35,6 +38,8 @@ Use this first when you need a baseline record of the server you are about to de
 ### `Get-FSMOState.ps1`
 Records the current FSMO role holders:
 
+- forest role holders
+- domain role holders
 - schema master
 - domain naming master
 - PDC emulator
@@ -50,8 +55,8 @@ Captures replication and directory health signals:
 - replication failures
 - replication partner metadata
 - key AD-related services
-- `dcdiag` output
-- `repadmin /replsummary` output
+- raw `dcdiag` output
+- raw `repadmin /replsummary` output
 
 Use this to confirm the directory is healthy before any retirement step.
 
@@ -62,7 +67,8 @@ Captures DNS state hosted on the DC:
 - forwarders
 - conditional forwarders
 - scavenging settings
-- zone record summaries
+- per-zone record summaries
+- raw DNS records
 
 Use this to understand what DNS cleanup or replacement planning is needed.
 
@@ -71,7 +77,7 @@ Captures the local server footprint that could matter during decommissioning:
 
 - installed Windows features
 - key services
-- SMB shares
+- SMB shares and share access
 - scheduled tasks with likely AD/DNS/sync relevance
 
 Use this to identify local server components that might need removal or documentation.
@@ -82,6 +88,7 @@ Collects likely AD dependency indicators:
 - trusts
 - computers
 - user-based service accounts with SPNs
+- one row per SPN for service-account review
 - delegation-related objects
 - gMSA accounts
 - OU-linked GPOs
@@ -94,8 +101,8 @@ Detects directory sync tooling on the DC:
 
 - Entra Connect Sync services and application entries
 - Cloud Sync provisioning agent services and application entries
-- registry fingerprints
-- optional ADSync scheduler data
+- registry key/property rows
+- ADSync scheduler settings when available
 
 Use this to determine whether the DC is hosting the sync component and which sync model is present.
 
@@ -103,6 +110,7 @@ Use this to determine whether the DC is hosting the sync component and which syn
 Runs all discovery scripts with one shared `-RunId` and stores the results together.
 
 Use this when you want a single inventory pass and a grouped evidence pack.
+It also generates the combined `Discovery-Report.md` and `Discovery-Index.csv` files.
 
 ## Suggested run order
 

@@ -22,6 +22,7 @@ if (-not $groupPolicyLoaded) {
 $trusts = @()
 $computers = @()
 $serviceAccounts = @()
+$serviceAccountSpns = @()
 $delegationAccounts = @()
 $gmsaAccounts = @()
 $ouGpoLinks = @()
@@ -36,28 +37,39 @@ if ($adModuleLoaded) {
     }
 
     try {
-        $computers = @(Get-ADComputer -Filter * -Properties LastLogonDate, OperatingSystem, DNSHostName, ServicePrincipalName, TrustedForDelegation, Enabled | Select-Object Name, DNSHostName, OperatingSystem, LastLogonDate, Enabled, TrustedForDelegation, @{Name='SPNCount';Expression={ @($_.ServicePrincipalName).Count }})
+        $computers = @(Get-ADComputer -Filter * -Properties LastLogonDate, OperatingSystem, DNSHostName, ServicePrincipalName, TrustedForDelegation, Enabled, Description, CanonicalName | Select-Object Name, DNSHostName, CanonicalName, OperatingSystem, Description, LastLogonDate, Enabled, TrustedForDelegation, @{Name='SPNCount';Expression={ @($_.ServicePrincipalName).Count }}, @{Name='ServicePrincipalNames';Expression={ @($_.ServicePrincipalName) -join '; ' }})
     }
     catch {
         $warnings += "Unable to enumerate computers: $($_.Exception.Message)"
     }
 
     try {
-        $serviceAccounts = @(Get-ADUser -Filter 'ServicePrincipalName -like "*"' -Properties ServicePrincipalName, PasswordNeverExpires, Enabled, LastLogonDate, TrustedForDelegation | Select-Object SamAccountName, Enabled, PasswordNeverExpires, LastLogonDate, TrustedForDelegation, @{Name='SPNCount';Expression={ @($_.ServicePrincipalName).Count }})
+        $serviceAccounts = @(Get-ADUser -LDAPFilter '(servicePrincipalName=*)' -Properties ServicePrincipalName, PasswordNeverExpires, Enabled, LastLogonDate, TrustedForDelegation, Description, DisplayName, MemberOf, PasswordLastSet, WhenCreated | Select-Object SamAccountName, DisplayName, Description, Enabled, PasswordNeverExpires, LastLogonDate, PasswordLastSet, WhenCreated, TrustedForDelegation, @{Name='SPNCount';Expression={ @($_.ServicePrincipalName).Count }}, @{Name='ServicePrincipalNames';Expression={ @($_.ServicePrincipalName) -join '; ' }}, @{Name='MemberOf';Expression={ @($_.MemberOf) -join '; ' }})
+        foreach ($account in @($serviceAccounts)) {
+            foreach ($spn in @($account.ServicePrincipalNames -split '; ')) {
+                if ($spn) {
+                    $serviceAccountSpns += [pscustomobject]@{
+                        SamAccountName = $account.SamAccountName
+                        DisplayName = $account.DisplayName
+                        SPN = $spn
+                    }
+                }
+            }
+        }
     }
     catch {
         $warnings += "Unable to enumerate user-based service accounts: $($_.Exception.Message)"
     }
 
     try {
-        $delegationAccounts = @(Get-ADObject -LDAPFilter '(|(userAccountControl:1.2.840.113556.1.4.803:=524288)(msDS-AllowedToDelegateTo=*))' -Properties objectClass, userAccountControl, msDS-AllowedToDelegateTo, servicePrincipalName | Select-Object DistinguishedName, ObjectClass, @{Name='AllowedToDelegateToCount';Expression={ @($_.'msDS-AllowedToDelegateTo').Count }}, @{Name='SPNCount';Expression={ @($_.ServicePrincipalName).Count }})
+        $delegationAccounts = @(Get-ADObject -LDAPFilter '(|(userAccountControl:1.2.840.113556.1.4.803:=524288)(msDS-AllowedToDelegateTo=*))' -Properties objectClass, userAccountControl, msDS-AllowedToDelegateTo, servicePrincipalName, Name | Select-Object Name, DistinguishedName, ObjectClass, UserAccountControl, @{Name='AllowedToDelegateToCount';Expression={ @($_.'msDS-AllowedToDelegateTo').Count }}, @{Name='AllowedToDelegateTo';Expression={ @($_.'msDS-AllowedToDelegateTo') -join '; ' }}, @{Name='SPNCount';Expression={ @($_.ServicePrincipalName).Count }}, @{Name='ServicePrincipalNames';Expression={ @($_.ServicePrincipalName) -join '; ' }})
     }
     catch {
         $warnings += "Unable to enumerate delegation-related objects: $($_.Exception.Message)"
     }
 
     try {
-        $gmsaAccounts = @(Get-ADServiceAccount -Filter * -Properties Enabled, PrincipalsAllowedToRetrieveManagedPassword, DNSHostName | Select-Object Name, DNSHostName, Enabled, @{Name='AllowedPrincipalsCount';Expression={ @($_.PrincipalsAllowedToRetrieveManagedPassword).Count }})
+        $gmsaAccounts = @(Get-ADServiceAccount -Filter * -Properties Enabled, PrincipalsAllowedToRetrieveManagedPassword, DNSHostName, Description, SamAccountName | Select-Object Name, SamAccountName, DNSHostName, Description, Enabled, @{Name='AllowedPrincipalsCount';Expression={ @($_.PrincipalsAllowedToRetrieveManagedPassword).Count }}, @{Name='AllowedPrincipals';Expression={ @($_.PrincipalsAllowedToRetrieveManagedPassword) -join '; ' }})
     }
     catch {
         $warnings += "Unable to enumerate gMSA accounts: $($_.Exception.Message)"
@@ -84,6 +96,7 @@ $data = [pscustomobject]@{
     Trusts = @($trusts)
     Computers = @($computers)
     ServiceAccounts = @($serviceAccounts)
+    ServiceAccountSpns = @($serviceAccountSpns)
     DelegationAccounts = @($delegationAccounts)
     ManagedServiceAccounts = @($gmsaAccounts)
     OUGroupPolicyLinks = @($ouGpoLinks)
@@ -98,16 +111,27 @@ $summary = @(
     "Trusts: $(@($trusts).Count)",
     "Computers: $(@($computers).Count)",
     "Service accounts with SPNs: $(@($serviceAccounts).Count)",
+    "Service account SPN rows: $(@($serviceAccountSpns).Count)",
     "Delegation-related objects: $(@($delegationAccounts).Count)",
     "gMSA accounts: $(@($gmsaAccounts).Count)",
     "OU GPO links: $(@($ouGpoLinks).Count)",
     "GPOs: $(@($gpos).Count)"
 )
 
-$artifact = Save-DiscoveryArtifact -Context $context -Data $data -SummaryLines $summary -Warnings $warnings
+$artifact = Save-DiscoveryArtifact -Context $context -Data $data -SummaryLines $summary -Warnings $warnings -Tables @{
+    'Trusts' = @($trusts)
+    'Computers' = @($computers)
+    'ServiceAccounts' = @($serviceAccounts)
+    'ServiceAccountSpns' = @($serviceAccountSpns)
+    'DelegationAccounts' = @($delegationAccounts)
+    'ManagedServiceAccounts' = @($gmsaAccounts)
+    'OUGroupPolicyLinks' = @($ouGpoLinks)
+    'GroupPolicies' = @($gpos)
+}
 [pscustomobject]@{
     ScriptName = $context.ScriptName
     TextPath = $artifact.TextPath
     JsonPath = $artifact.JsonPath
+    CsvFiles = $artifact.CsvFiles
     RunRoot = $context.RunRoot
 }

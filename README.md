@@ -19,6 +19,8 @@ Run the full discovery pack from the repo root:
 pwsh -File .\run-discovery.ps1
 ```
 
+That produces one run folder under `scripts/output/` with per-script TXT/CSV/JSON artifacts plus a consolidated `Discovery-Report.md`.
+
 Run the EntraConnect tenant discovery pack from the repo root:
 
 ```powershell
@@ -67,4 +69,4 @@ For the EntraConnect workflow, see [`scripts/entra-connect/README.md`](scripts/e
 
 - The discovery scripts are read-only.
 - They are intended to run on the domain controller being assessed.
-- Output artifacts are written as both JSON and a short text summary.
+- Output artifacts are written as detailed JSON, TXT, CSV, and a consolidated markdown report.

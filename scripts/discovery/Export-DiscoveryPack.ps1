@@ -10,6 +10,8 @@ if (-not $RunId) {
     $RunId = Get-Date -Format 'yyyyMMdd-HHmmss'
 }
 
+$packContext = New-DiscoveryContext -ScriptName 'Export-DiscoveryPack' -OutputRoot $OutputRoot -RunId $RunId
+
 $scriptNames = @(
     'Get-DCOverview.ps1',
     'Get-FSMOState.ps1',
@@ -30,7 +32,6 @@ foreach ($scriptName in $scriptNames) {
     $results += & $scriptPath -OutputRoot $OutputRoot -RunId $RunId
 }
 
-$packContext = New-DiscoveryContext -ScriptName 'Export-DiscoveryPack' -OutputRoot $OutputRoot -RunId $RunId
 $summary = @(
     "Scripts run: $($results.Count)",
     "Output root: $($packContext.RunRoot)"
@@ -48,9 +49,13 @@ $data = [pscustomobject]@{
 }
 
 $artifact = Save-DiscoveryArtifact -Context $packContext -Data $data -SummaryLines $summary
+$runReport = Save-DiscoveryRunReport -Context $packContext -ScriptResults $results -ReportTitle 'AD DS Discovery Run Report'
 [pscustomobject]@{
     ScriptName = $packContext.ScriptName
     TextPath = $artifact.TextPath
     JsonPath = $artifact.JsonPath
+    ReportPath = $runReport.ReportPath
+    IndexPath = $runReport.IndexPath
+    CsvFiles = $artifact.CsvFiles
     RunRoot = $packContext.RunRoot
 }

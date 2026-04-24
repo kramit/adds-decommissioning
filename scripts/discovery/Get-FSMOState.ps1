@@ -16,6 +16,7 @@ if (-not $adModuleLoaded) {
 
 $forestData = $null
 $domainData = @()
+$roleAssignments = @()
 
 if ($adModuleLoaded) {
     try {
@@ -38,10 +39,40 @@ if ($adModuleLoaded) {
                     InfrastructureMaster = $domain.InfrastructureMaster
                     NetBIOSName = $domain.NetBIOSName
                 }
+                $roleAssignments += [pscustomobject]@{
+                    Scope = 'Domain'
+                    Domain = $domain.DNSRoot
+                    Role = 'PDC Emulator'
+                    Holder = $domain.PDCEmulator
+                }
+                $roleAssignments += [pscustomobject]@{
+                    Scope = 'Domain'
+                    Domain = $domain.DNSRoot
+                    Role = 'RID Master'
+                    Holder = $domain.RIDMaster
+                }
+                $roleAssignments += [pscustomobject]@{
+                    Scope = 'Domain'
+                    Domain = $domain.DNSRoot
+                    Role = 'Infrastructure Master'
+                    Holder = $domain.InfrastructureMaster
+                }
             }
             catch {
                 $warnings += "Unable to read domain '$domainName': $($_.Exception.Message)"
             }
+        }
+        $roleAssignments += [pscustomobject]@{
+            Scope = 'Forest'
+            Domain = $forest.RootDomain
+            Role = 'Schema Master'
+            Holder = $forest.SchemaMaster
+        }
+        $roleAssignments += [pscustomobject]@{
+            Scope = 'Forest'
+            Domain = $forest.RootDomain
+            Role = 'Domain Naming Master'
+            Holder = $forest.DomainNamingMaster
         }
     }
     catch {
@@ -53,8 +84,8 @@ $data = [pscustomobject]@{
     Forest = $forestData
     Domains = @($domainData)
     Notes = @(
-        'This script records FSMO role holders before any role transfer or demotion.',
-        'Use it as a baseline for the decommission evidence pack.'
+    'This script records FSMO role holders before any role transfer or demotion.',
+    'Use it as a baseline for the decommission evidence pack.'
     )
 }
 
@@ -70,10 +101,21 @@ foreach ($domain in @($domainData)) {
     $summary += "Domain $($domain.Name) Infrastructure: $($domain.InfrastructureMaster)"
 }
 
-$artifact = Save-DiscoveryArtifact -Context $context -Data $data -SummaryLines $summary -Warnings $warnings
+$artifact = Save-DiscoveryArtifact -Context $context -Data $data -SummaryLines $summary -Warnings $warnings -Tables @{
+    'RoleAssignments' = @($roleAssignments)
+    'DomainDetails' = @($domainData)
+    'ForestDetails' = @([pscustomobject]@{
+        Name = $forestData.Name
+        RootDomain = $forestData.RootDomain
+        SchemaMaster = $forestData.SchemaMaster
+        DomainNamingMaster = $forestData.DomainNamingMaster
+        GlobalCatalogs = @($forestData.GlobalCatalogs)
+    })
+}
 [pscustomobject]@{
     ScriptName = $context.ScriptName
     TextPath = $artifact.TextPath
     JsonPath = $artifact.JsonPath
+    CsvFiles = $artifact.CsvFiles
     RunRoot = $context.RunRoot
 }

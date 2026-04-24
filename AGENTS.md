@@ -43,6 +43,8 @@ Purpose:
 - capture AD health and FSMO state
 - inventory DNS, local services, tasks, and likely AD dependencies
 - detect Entra Connect / Cloud Sync footprint on the server
+- emit detailed per-script TXT, CSV, and JSON artifacts
+- generate a consolidated `Discovery-Report.md` and `Discovery-Index.csv`
 
 ### Tenant-side EntraConnect discovery and disablement
 
@@ -110,7 +112,9 @@ Recommended order for a full change cycle:
 
 ## Output Convention
 
-- Every script writes a JSON artifact and a short text summary.
+- Every discovery script writes a JSON artifact, a human-readable TXT report, and one or more detailed CSV tables.
+- Some scripts also write attachment TXT files for raw command output.
+- The discovery pack runner generates a consolidated `Discovery-Report.md` and `Discovery-Index.csv` at the run root.
 - Shared `RunId` values group evidence into one run folder.
 - Runtime output belongs under `scripts/output/` and should remain untracked.
 
@@ -143,4 +147,3 @@ Recommended order for a full change cycle:
 - [`scripts/entra-connect/README.md`](/Users/mike/Library/CloudStorage/OneDrive-Personal/Documents/Obsidian/MikesVault/General%20Notes/ADDS%20decomissioning/scripts/entra-connect/README.md)
 - [`scripts/entra-connect/local/README.md`](/Users/mike/Library/CloudStorage/OneDrive-Personal/Documents/Obsidian/MikesVault/General%20Notes/ADDS%20decomissioning/scripts/entra-connect/local/README.md)
 - [`scripts/entra-connect/precheck/README.md`](/Users/mike/Library/CloudStorage/OneDrive-Personal/Documents/Obsidian/MikesVault/General%20Notes/ADDS%20decomissioning/scripts/entra-connect/precheck/README.md)
-

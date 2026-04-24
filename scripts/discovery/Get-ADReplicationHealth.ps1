@@ -19,6 +19,7 @@ $repadmin = $null
 $dcList = @()
 $replicationFailures = @()
 $partnerMetadata = @()
+$serviceChecks = @()
 
 if ($adModuleLoaded) {
     try {
@@ -60,7 +61,17 @@ else {
 $services = @()
 foreach ($name in 'NTDS', 'DNS', 'DFSR', 'Netlogon', 'ADWS', 'W32Time') {
     try {
-        $services += Get-Service -Name $name -ErrorAction Stop | Select-Object Name, Status, StartType
+        $service = Get-Service -Name $name -ErrorAction Stop
+        $cimService = Get-CimInstance Win32_Service -Filter "Name='$($service.Name)'" -ErrorAction SilentlyContinue
+        $services += $service | Select-Object Name, DisplayName, Status
+        $serviceChecks += [pscustomobject]@{
+            Name = $service.Name
+            DisplayName = $service.DisplayName
+            Status = $service.Status
+            StartType = if ($cimService) { $cimService.StartMode } else { $null }
+            StartName = if ($cimService) { $cimService.StartName } else { $null }
+            State = if ($cimService) { $cimService.State } else { $null }
+        }
     }
     catch {
         $warnings += "Service '$name' was not found."
@@ -71,7 +82,7 @@ $data = [pscustomobject]@{
     DomainControllers = @($dcList)
     ReplicationFailures = @($replicationFailures)
     PartnerMetadata = @($partnerMetadata)
-    Services = @($services)
+    Services = @($serviceChecks)
     DcDiag = $dcdiag
     RepAdmin = $repadmin
     Notes = @(
@@ -89,10 +100,19 @@ $summary = @(
     "repadmin captured: $([bool]$repadmin)"
 )
 
-$artifact = Save-DiscoveryArtifact -Context $context -Data $data -SummaryLines $summary -Warnings $warnings
+$artifact = Save-DiscoveryArtifact -Context $context -Data $data -SummaryLines $summary -Warnings $warnings -Tables @{
+    'DomainControllers' = @($dcList)
+    'ReplicationFailures' = @($replicationFailures)
+    'PartnerMetadata' = @($partnerMetadata)
+    'ServiceChecks' = @($serviceChecks)
+} -TextAttachments @{
+    'dcdiag' = @($dcdiag.Output)
+    'repadmin' = @($repadmin.Output)
+}
 [pscustomobject]@{
     ScriptName = $context.ScriptName
     TextPath = $artifact.TextPath
     JsonPath = $artifact.JsonPath
+    CsvFiles = $artifact.CsvFiles
     RunRoot = $context.RunRoot
 }

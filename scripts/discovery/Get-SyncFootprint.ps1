@@ -17,7 +17,16 @@ $adsyncModuleAvailable = $false
 
 foreach ($name in 'ADSync', 'AzureADConnectProvisioningAgent', 'AzureADConnectAuthenticationAgent') {
     try {
-        $services += Get-Service -Name $name -ErrorAction Stop | Select-Object Name, DisplayName, Status, StartType
+        $service = Get-Service -Name $name -ErrorAction Stop
+        $cimService = Get-CimInstance Win32_Service -Filter "Name='$($service.Name)'" -ErrorAction SilentlyContinue
+        $services += [pscustomobject]@{
+            Name = $service.Name
+            DisplayName = $service.DisplayName
+            Status = $service.Status
+            StartType = if ($cimService) { $cimService.StartMode } else { $null }
+            StartName = if ($cimService) { $cimService.StartName } else { $null }
+            State = if ($cimService) { $cimService.State } else { $null }
+        }
     }
     catch {
     }
@@ -38,22 +47,27 @@ foreach ($root in $uninstallRoots) {
     }
 }
 
-try {
-    $registryHits += @(Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Azure AD Sync' -ErrorAction SilentlyContinue)
-}
-catch {
-}
+$registryPaths = @(
+    'HKLM:\SOFTWARE\Microsoft\Azure AD Sync',
+    'HKLM:\SOFTWARE\Microsoft\Microsoft Azure AD Connect',
+    'HKLM:\SOFTWARE\Microsoft\CloudSync'
+)
 
-try {
-    $registryHits += @(Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Microsoft Azure AD Connect' -ErrorAction SilentlyContinue)
-}
-catch {
-}
-
-try {
-    $registryHits += @(Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\CloudSync' -ErrorAction SilentlyContinue)
-}
-catch {
+foreach ($registryPath in $registryPaths) {
+    try {
+        $item = Get-ItemProperty $registryPath -ErrorAction Stop
+        foreach ($property in $item.PSObject.Properties) {
+            if ($property.Name -notmatch '^PS') {
+                $registryHits += [pscustomobject]@{
+                    RegistryPath = $registryPath
+                    PropertyName = $property.Name
+                    PropertyValue = $property.Value
+                }
+            }
+        }
+    }
+    catch {
+    }
 }
 
 $adsyncModuleAvailable = Test-OptionalModule -Name 'ADSync'
@@ -85,7 +99,7 @@ $data = [pscustomobject]@{
     Classification = $classification
     Services = @($services)
     InstalledApplications = @($installedApps)
-    RegistryHits = @($registryHits | ForEach-Object { $_.PSObject.Properties | Select-Object Name, Value })
+    RegistryHits = @($registryHits)
     ADSyncScheduler = $adsyncScheduler
     Notes = @(
         'This script looks for Entra Connect Sync and Cloud Sync footprints on the server.',
@@ -97,14 +111,28 @@ $summary = @(
     "Classification: $classification",
     "Services matched: $(@($services).Count)",
     "Installed application matches: $(@($installedApps).Count)",
-    "Registry hits: $(@($registryHits).Count)",
+    "Registry key/property rows: $(@($registryHits).Count)",
     "ADSync scheduler captured: $([bool]$adsyncScheduler)"
 )
 
-$artifact = Save-DiscoveryArtifact -Context $context -Data $data -SummaryLines $summary -Warnings $warnings
+$artifact = Save-DiscoveryArtifact -Context $context -Data $data -SummaryLines $summary -Warnings $warnings -Tables @{
+    'Services' = @($services)
+    'InstalledApplications' = @($installedApps)
+    'RegistryEntries' = @($registryHits)
+    'ADSyncScheduler' = @([pscustomobject]@{
+        Exists = [bool]$adsyncScheduler
+        StagingMode = if ($adsyncScheduler) { $adsyncScheduler.StagingMode } else { $null }
+        SyncCycleEnabled = if ($adsyncScheduler) { $adsyncScheduler.SyncCycleEnabled } else { $null }
+        NextSyncCyclePolicyType = if ($adsyncScheduler) { $adsyncScheduler.NextSyncCyclePolicyType } else { $null }
+        CustomizedSyncCycleInterval = if ($adsyncScheduler) { $adsyncScheduler.CustomizedSyncCycleInterval } else { $null }
+        AllowedSyncCycleInterval = if ($adsyncScheduler) { $adsyncScheduler.AllowedSyncCycleInterval } else { $null }
+        SchedulerSuspended = if ($adsyncScheduler) { $adsyncScheduler.SchedulerSuspended } else { $null }
+    })
+}
 [pscustomobject]@{
     ScriptName = $context.ScriptName
     TextPath = $artifact.TextPath
     JsonPath = $artifact.JsonPath
+    CsvFiles = $artifact.CsvFiles
     RunRoot = $context.RunRoot
 }

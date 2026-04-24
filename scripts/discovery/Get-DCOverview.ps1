@@ -38,6 +38,23 @@ try {
     $timeStatus = Invoke-ExternalCommand -FilePath 'w32tm.exe' -Arguments @('/query', '/status')
     $timeSource = Invoke-ExternalCommand -FilePath 'w32tm.exe' -Arguments @('/query', '/source')
 
+    $networkAdapterRows = @()
+    foreach ($adapter in $networkAdapters) {
+        $networkAdapterRows += [pscustomobject]@{
+            Description = $adapter.Description
+            SettingId = $adapter.SettingID
+            MACAddress = $adapter.MACAddress
+            DHCPEnabled = $adapter.DHCPEnabled
+            IPAddresses = @($adapter.IPAddress -join '; ')
+            Subnets = @($adapter.IPSubnet -join '; ')
+            Gateways = @($adapter.DefaultIPGateway -join '; ')
+            DNSServers = @($adapter.DNSServerSearchOrder -join '; ')
+            DHCPServer = $adapter.DHCPServer
+            DHCPLeaseObtained = $adapter.DHCPLeaseObtained
+            DHCPLeaseExpires = $adapter.DHCPLeaseExpires
+        }
+    }
+
     $data = [pscustomobject]@{
         Computer = [pscustomobject]@{
             Name = $env:COMPUTERNAME
@@ -45,7 +62,7 @@ try {
             PartOfDomain = $computerSystem.PartOfDomain
             Manufacturer = $computerSystem.Manufacturer
             Model = $computerSystem.Model
-            Uptime = (New-TimeSpan -Start $os.LastBootUpTime -End (Get-Date))
+            Uptime = (New-TimeSpan -Start $os.LastBootUpTime -End (Get-Date)).ToString()
             OS = [pscustomobject]@{
                 Caption = $os.Caption
                 Version = $os.Version
@@ -81,6 +98,7 @@ try {
             Status = @($timeStatus.Output)
             Source = @($timeSource.Output)
         }
+        NetworkAdapters = @($networkAdapterRows)
         Notes = @(
             'This script is read-only.',
             'It captures local DC identity, domain membership, forest metadata, and time source.'
@@ -100,10 +118,47 @@ $summary = @(
     "Time source command exit code: $($timeSource.ExitCode)"
 )
 
-$artifact = Save-DiscoveryArtifact -Context $context -Data $data -SummaryLines $summary -Warnings $warnings
+$artifact = Save-DiscoveryArtifact -Context $context -Data $data -SummaryLines $summary -Warnings $warnings -Tables @{
+    'ComputerOverview' = @([pscustomobject]@{
+        Name = $data.Computer.Name
+        Domain = $data.Computer.Domain
+        PartOfDomain = $data.Computer.PartOfDomain
+        Manufacturer = $data.Computer.Manufacturer
+        Model = $data.Computer.Model
+        Uptime = $data.Computer.Uptime
+        OSCaption = $data.Computer.OS.Caption
+        OSVersion = $data.Computer.OS.Version
+        BuildNumber = $data.Computer.OS.BuildNumber
+        InstallDate = $data.Computer.OS.InstallDate
+        IPv4Addresses = @($data.Computer.IPv4Addresses)
+        GlobalCatalog = $data.Computer.GlobalCatalog
+        Site = $data.Computer.Site
+        Roles = @($data.Computer.Roles)
+    })
+    'NetworkAdapters' = @($networkAdapterRows)
+    'DomainOverview' = @([pscustomobject]@{
+        Name = $data.Domain.Name
+        NetBIOSName = $data.Domain.NetBIOSName
+        DistinguishedName = $data.Domain.DistinguishedName
+        PDCEmulator = $data.Domain.PDCEmulator
+        RIDMaster = $data.Domain.RIDMaster
+        InfrastructureMaster = $data.Domain.InfrastructureMaster
+    })
+    'ForestOverview' = @([pscustomobject]@{
+        Name = $data.Forest.Name
+        RootDomain = $data.Forest.RootDomain
+        SchemaMaster = $data.Forest.SchemaMaster
+        DomainNamingMaster = $data.Forest.DomainNamingMaster
+        GlobalCatalogs = @($data.Forest.GlobalCatalogs)
+    })
+} -TextAttachments @{
+    'w32tm-status' = @($timeStatus.Output)
+    'w32tm-source' = @($timeSource.Output)
+}
 [pscustomobject]@{
     ScriptName = $context.ScriptName
     TextPath = $artifact.TextPath
     JsonPath = $artifact.JsonPath
+    CsvFiles = $artifact.CsvFiles
     RunRoot = $context.RunRoot
 }
