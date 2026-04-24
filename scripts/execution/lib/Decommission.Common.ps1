@@ -215,7 +215,7 @@ function Write-DecommissionLog {
 }
 
 function Test-PendingReboot {
-    $sources = New-Object System.Collections.Generic.List[string]
+    $sources = @()
 
     $registryChecks = @(
         'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending',
@@ -224,14 +224,14 @@ function Test-PendingReboot {
 
     foreach ($path in $registryChecks) {
         if (Test-Path $path) {
-            $sources.Add($path)
+            $sources += $path
         }
     }
 
     try {
         $sessionManager = Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager' -Name PendingFileRenameOperations -ErrorAction Stop
         if ($sessionManager.PendingFileRenameOperations) {
-            $sources.Add('HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\PendingFileRenameOperations')
+            $sources += 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\PendingFileRenameOperations'
         }
     }
     catch {
@@ -347,7 +347,7 @@ function Get-DCDecommissionAssessment {
     )
 
     $resolvedIndex = Resolve-DiscoveryIndexPath -DiscoveryRunRoot $DiscoveryRunRoot -DiscoveryIndexPath $DiscoveryIndexPath
-    $warnings = New-Object System.Collections.Generic.List[string]
+    $warnings = @()
 
     $requiredArtifacts = @(
         'Get-DCOverview',
@@ -366,7 +366,7 @@ function Get-DCDecommissionAssessment {
             $artifacts[$scriptName] = $artifact
         }
         else {
-            $warnings.Add("Missing discovery artifact: $scriptName")
+            $warnings += "Missing discovery artifact: $scriptName"
         }
     }
 
@@ -466,62 +466,62 @@ function Get-DCDecommissionAssessment {
     $serviceAccountCount = if ($tables.Contains('DiscoveryServiceAccounts')) { @($tables['DiscoveryServiceAccounts']).Count } else { 0 }
     $syncClassification = if ($sync -and $sync.Classification) { [string]$sync.Classification } else { 'Unknown' }
 
-    $blockers = New-Object System.Collections.Generic.List[object]
-    $recommendations = New-Object System.Collections.Generic.List[object]
+    $blockers = @()
+    $recommendations = @()
 
     if ($dcCount -eq 0) {
-        $warnings.Add('No domain controller table was discovered in the latest discovery pack.')
+        $warnings += 'No domain controller table was discovered in the latest discovery pack.'
     }
 
     if ($replicationFailures.Count -gt 0) {
-        $blockers.Add([pscustomobject]@{
+        $blockers += [pscustomobject]@{
             Severity = 'High'
             Category = 'Replication'
             Finding = "Replication failures discovered: $($replicationFailures.Count)"
             Action = 'Resolve AD replication issues before demotion.'
-        })
+        }
     }
 
     if ($heldRoles.Count -gt 0) {
-        $blockers.Add([pscustomobject]@{
+        $blockers += [pscustomobject]@{
             Severity = 'High'
             Category = 'FSMO'
             Finding = "This host holds FSMO role assignments: $($heldRoles.Count)"
             Action = 'Transfer FSMO roles to another DC before decommissioning or explicitly override with a forced removal path.'
-        })
+        }
     }
 
     if ($syncClassification -ne 'No sync footprint detected' -and $syncClassification -ne 'Unknown') {
-        $blockers.Add([pscustomobject]@{
+        $blockers += [pscustomobject]@{
             Severity = 'High'
             Category = 'EntraConnect'
             Finding = "Sync footprint detected: $syncClassification"
             Action = 'Complete the EntraConnect disconnect workflow before retiring this DC.'
-        })
+        }
     }
 
     if ($zoneCount -gt 0) {
-        $recommendations.Add([pscustomobject]@{
+        $recommendations += [pscustomobject]@{
             Area = 'DNS'
             Observation = "DNS zones are hosted on this server: $zoneCount"
             Action = 'Review zone hosting, forwarders, and delegation cleanup before demotion.'
-        })
+        }
     }
 
     if ($shareCount -gt 0) {
-        $recommendations.Add([pscustomobject]@{
+        $recommendations += [pscustomobject]@{
             Area = 'SMB'
             Observation = "SMB shares discovered: $shareCount"
             Action = 'Validate share paths and ACLs so file-services dependencies can be relocated or retired.'
-        })
+        }
     }
 
     if ($serviceAccountCount -gt 0) {
-        $recommendations.Add([pscustomobject]@{
+        $recommendations += [pscustomobject]@{
             Area = 'AD Dependencies'
             Observation = "Service accounts with SPNs discovered: $serviceAccountCount"
             Action = 'Review SPNs, delegation accounts, and application ownership before decommissioning.'
-        })
+        }
     }
 
     $discoveryRunRootResolved = Split-Path -Path $resolvedIndex -Parent

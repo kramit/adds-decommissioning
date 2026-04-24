@@ -46,6 +46,12 @@ When the plan has been reviewed and approved, run the DC decommission execution 
 pwsh -File .\run-dc-decommission.ps1 -Execute
 ```
 
+To simulate the demotion path without calling `Uninstall-ADDSDomainController`, use:
+
+```powershell
+pwsh -File .\run-dc-decommission.ps1 -Execute -WhatIf
+```
+
 You can optionally provide a shared run ID so multiple script runs land in the same evidence folder:
 
 ```powershell

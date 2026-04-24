@@ -1,4 +1,3 @@
-[CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'High')]
 param(
     [string]$OutputRoot = (Join-Path $PSScriptRoot '..\output'),
     [string]$RunId,
@@ -16,6 +15,7 @@ param(
     [switch]$RemoveDnsDelegation,
     [switch]$DemoteOperationMasterRole,
     [switch]$RetainDCMetadata,
+    [switch]$WhatIf,
     [System.Management.Automation.PSCredential]$Credential,
     [System.Management.Automation.PSCredential]$DnsDelegationRemovalCredential,
     [SecureString]$LocalAdministratorPassword
@@ -28,17 +28,15 @@ $context = New-DecommissionContext -ScriptName 'Invoke-DCDecommission' -OutputRo
 $assessment = Get-DCDecommissionAssessment -DiscoveryRunRoot $DiscoveryRunRoot -DiscoveryIndexPath $DiscoveryIndexPath
 $environment = Get-ExecutionEnvironmentSnapshot
 $recentEvents = @(Get-RecentEventLogEntries)
-$warnings = New-Object System.Collections.Generic.List[string]
-foreach ($warning in @($assessment.Warnings)) {
-    $warnings.Add($warning)
-}
+$warnings = @($assessment.Warnings)
 
-$executionSteps = New-Object System.Collections.Generic.List[object]
+$executionSteps = @()
 $preflightAttachments = @{}
 $postflightAttachments = @{}
 $failure = $null
 $executed = $false
 $rebootExpected = $false
+$whatIfSkipped = $false
 
 function Add-StepRecord {
     param(
@@ -59,7 +57,7 @@ function Add-StepRecord {
         [string]$ErrorMessage
     )
 
-    $executionSteps.Add([pscustomobject]@{
+    $script:executionSteps += [pscustomobject]@{
         Name = $Name
         Status = $Status
         StartTime = $StartTime
@@ -67,7 +65,7 @@ function Add-StepRecord {
         DurationSeconds = [math]::Round(($EndTime - $StartTime).TotalSeconds, 3)
         Details = $Details
         ErrorMessage = $ErrorMessage
-    })
+    }
 }
 
 function Invoke-LoggedStep {
@@ -129,7 +127,7 @@ try {
         $currentState | Add-Member -NotePropertyName DcDiagPreflight -NotePropertyValue $dcdiag -Force
     }
     else {
-        $warnings.Add('dcdiag.exe was not available for preflight diagnostics.')
+        $warnings += 'dcdiag.exe was not available for preflight diagnostics.'
     }
 
     if (Get-Command repadmin.exe -ErrorAction SilentlyContinue) {
@@ -138,7 +136,7 @@ try {
         $currentState | Add-Member -NotePropertyName RepAdminPreflight -NotePropertyValue $repadmin -Force
     }
     else {
-        $warnings.Add('repadmin.exe was not available for preflight diagnostics.')
+        $warnings += 'repadmin.exe was not available for preflight diagnostics.'
     }
 
     if (-not $Execute) {
@@ -150,7 +148,7 @@ try {
             throw "Blocked by discovery assessment: $blockerText"
         }
 
-        if ($PSCmdlet.ShouldProcess($assessment.CurrentHost, 'decommission domain controller')) {
+        if (-not $WhatIf) {
             $executed = $true
             $cmdletParams = @{
                 Force = $true
@@ -207,7 +205,7 @@ try {
             $currentState | Add-Member -NotePropertyName DemotionResult -NotePropertyValue $demotionResult -Force
 
             if ($ForceRemoval) {
-                $warnings.Add('Force removal was used. Metadata cleanup on a healthy DC is still required.')
+                $warnings += 'Force removal was used. Metadata cleanup on a healthy DC is still required.'
             }
 
             if ($NoRebootOnCompletion) {
@@ -230,6 +228,15 @@ try {
                 }
                 $currentState | Add-Member -NotePropertyName Postflight -NotePropertyValue $postflightState -Force
             }
+        }
+        else {
+            $whatIfSkipped = $true
+            Add-StepRecord -Name 'Uninstall-ADDSDomainController' -StartTime (Get-Date) -EndTime (Get-Date) -Status 'Skipped' -Details ([pscustomobject]@{
+                Reason = 'WhatIf'
+                Target = $assessment.CurrentHost
+                Action = 'decommission domain controller'
+            })
+            Write-DecommissionLog -Path $context.LogPath -Message 'Uninstall-ADDSDomainController skipped by WhatIf.'
         }
     }
 }
@@ -261,6 +268,7 @@ finally {
         "Current host: $($assessment.CurrentHost)",
         "Execute requested: $Execute",
         "Executed: $executed",
+        "WhatIf skipped demotion: $whatIfSkipped",
         "Can proceed: $($assessment.CanProceed)",
         "Blockers: $(@($assessment.Blockers).Count)",
         "Recommendations: $(@($assessment.Recommendations).Count)",
@@ -287,6 +295,7 @@ finally {
         Execution = [pscustomobject]@{
             ExecuteRequested = $Execute
             Executed = $executed
+            WhatIfSkipped = $whatIfSkipped
             RebootExpected = $rebootExpected
             StepResults = @($executionSteps)
             Failure = if ($failure) {

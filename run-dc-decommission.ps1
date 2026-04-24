@@ -15,6 +15,7 @@ param(
     [switch]$RemoveDnsDelegation,
     [switch]$DemoteOperationMasterRole,
     [switch]$RetainDCMetadata,
+    [switch]$WhatIf,
     [System.Management.Automation.PSCredential]$Credential,
     [System.Management.Automation.PSCredential]$DnsDelegationRemovalCredential,
     [SecureString]$LocalAdministratorPassword
@@ -67,4 +68,7 @@ if ($RunId) {
 }
 
 $executeArgs.Execute = $true
+if ($WhatIf) {
+    $executeArgs['WhatIf'] = $true
+}
 & $invokeScript @executeArgs

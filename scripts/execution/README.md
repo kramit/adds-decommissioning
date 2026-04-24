@@ -46,6 +46,7 @@ It captures:
 - step-by-step execution records
 
 It refuses to proceed if the discovery pack shows obvious blockers unless `-BypassBlockers` is supplied.
+Use `-WhatIf` when you want the script to build the execution artifact set and record the intended demotion step without calling `Uninstall-ADDSDomainController`.
 
 ### `run-dc-decommission.ps1`
 Thin launcher at the repo root.
@@ -60,6 +61,7 @@ With `-Execute`, it runs the plan and then the execution script with the same in
 3. Run `run-dc-decommission.ps1` without `-Execute`
 4. Review the decommission plan output
 5. Run `run-dc-decommission.ps1 -Execute` when the plan is approved
+6. Optionally run `run-dc-decommission.ps1 -Execute -WhatIf` to dry-run the demotion step and capture the planned action in the report
 
 ## Debug capture
 

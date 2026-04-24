@@ -117,7 +117,7 @@ function Write-DiscoveryCsvFile {
         [Parameter(Mandatory = $true)]
         [string]$Path,
 
-        [Parameter(Mandatory = $true)]
+        [AllowEmptyCollection()]
         [object[]]$Rows
     )
 
@@ -179,10 +179,10 @@ function Save-DiscoveryArtifact {
         [System.Collections.IDictionary]$TextAttachments = @{}
     )
 
-    $json = $Data | ConvertTo-Json -Depth 10
+    $json = $Data | ConvertTo-Json -Depth 30
     $json | Set-Content -Path $Context.JsonPath -Encoding UTF8
 
-    $csvFiles = New-Object System.Collections.Generic.List[object]
+    $csvFiles = @()
     if ($Tables) {
         foreach ($entry in $Tables.GetEnumerator()) {
             $tableName = [string]$entry.Key
@@ -190,15 +190,15 @@ function Save-DiscoveryArtifact {
             $csvPath = Join-Path $Context.ArtifactRoot "$($Context.SafeName)-$safeTableName.csv"
             $rows = @($entry.Value)
             Write-DiscoveryCsvFile -Path $csvPath -Rows $rows
-            $csvFiles.Add([pscustomobject]@{
+            $csvFiles += [pscustomobject]@{
                 TableName = $tableName
                 Path = $csvPath
                 RowCount = $rows.Count
-            })
+            }
         }
     }
 
-    $attachmentFiles = New-Object System.Collections.Generic.List[object]
+    $attachmentFiles = @()
     if ($TextAttachments) {
         foreach ($entry in $TextAttachments.GetEnumerator()) {
             $attachmentName = [string]$entry.Key
@@ -206,11 +206,11 @@ function Save-DiscoveryArtifact {
             $attachmentPath = Join-Path $Context.ArtifactRoot "$($Context.SafeName)-$safeAttachmentName.txt"
             $lines = @($entry.Value)
             $lines | Set-Content -Path $attachmentPath -Encoding UTF8
-            $attachmentFiles.Add([pscustomobject]@{
+            $attachmentFiles += [pscustomobject]@{
                 Name = $attachmentName
                 Path = $attachmentPath
                 LineCount = $lines.Count
-            })
+            }
         }
     }
 
@@ -304,6 +304,8 @@ function Save-DiscoveryRunReport {
     $lines.Add("## Script Index")
 
     foreach ($result in $ScriptResults) {
+        $textPath = if ($null -ne $result.TextPath) { [string]$result.TextPath } else { '' }
+        $jsonPath = if ($null -ne $result.JsonPath) { [string]$result.JsonPath } else { '' }
         $csvPaths = @()
         if ($result.CsvFiles) {
             $csvPaths = @($result.CsvFiles | ForEach-Object { $_.Path })
@@ -311,15 +313,15 @@ function Save-DiscoveryRunReport {
 
         $indexRows += [pscustomobject]@{
             ScriptName = $result.ScriptName
-            TextPath = $result.TextPath
-            JsonPath = $result.JsonPath
+            TextPath = $textPath
+            JsonPath = $jsonPath
             CsvCount = @($csvPaths).Count
             CsvPaths = @($csvPaths) -join '; '
         }
 
         $lines.Add("- $($result.ScriptName)")
-        $lines.Add("  - Report: $($result.TextPath)")
-        $lines.Add("  - JSON: $($result.JsonPath)")
+        $lines.Add("  - Report: $textPath")
+        $lines.Add("  - JSON: $jsonPath")
         if ($csvPaths.Count -gt 0) {
             $lines.Add("  - CSVs:")
             foreach ($csvPath in $csvPaths) {
@@ -331,14 +333,17 @@ function Save-DiscoveryRunReport {
     $lines.Add("")
     $lines.Add("## Script Reports")
     foreach ($result in $ScriptResults) {
+        $textPath = if ($null -ne $result.TextPath) { [string]$result.TextPath } else { '' }
         $lines.Add("")
         $lines.Add("## $($result.ScriptName)")
         $lines.Add("")
-        if (Test-Path $result.TextPath) {
-            $lines.AddRange(@(Get-Content -Path $result.TextPath))
+        if ($textPath -and (Test-Path -LiteralPath $textPath)) {
+            foreach ($reportLine in @(Get-Content -Path $textPath)) {
+                $lines.Add([string]$reportLine)
+            }
         }
         else {
-            $lines.Add("_Missing report file: $($result.TextPath)_")
+            $lines.Add("_Missing report file: $textPath_")
         }
     }
 

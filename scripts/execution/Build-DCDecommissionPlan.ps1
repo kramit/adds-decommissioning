@@ -29,6 +29,10 @@ try {
     $tables['ExecutionEnvironmentModules'] = @($environment.Modules)
     $tables['ExecutionEnvironmentServices'] = @($environment.Services)
     $tables['RecentEvents'] = @($recentEvents)
+    $tables['Blockers'] = @($assessment.Blockers)
+    $tables['Recommendations'] = @($assessment.Recommendations)
+    $tables['HeldRoles'] = @($assessment.HeldRoles)
+    $tables['ReplicationFailures'] = @($assessment.ReplicationFailures)
 
     $data = [pscustomobject]@{
         RunId = $context.RunId
@@ -62,6 +66,10 @@ try {
         "Recommendations: $(@($assessment.Recommendations).Count)",
         "Sync footprint: $($assessment.SyncClassification)"
     )
+
+    if (@($assessment.Blockers).Count -gt 0) {
+        $summary += "Primary blocker: $($assessment.Blockers[0].Category) - $($assessment.Blockers[0].Finding)"
+    }
 
     $artifact = Save-DecommissionArtifact -Context $context -Data $data -SummaryLines $summary -Warnings $warnings -Tables $tables
     Write-DecommissionLog -Path $context.LogPath -Message "Artifact JSON: $($artifact.JsonPath)"
